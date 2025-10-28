@@ -12,3 +12,9 @@ Controlling every detail of LLM training, by building from the ground up.
 ```bash 
 uv pip install nvidia-cutlass-dsl triton
 ```
+
+## Tokenizers 
+
+```bash
+uv run maturin develop --release --manifest-path tokenizer/Cargo.toml 
+```

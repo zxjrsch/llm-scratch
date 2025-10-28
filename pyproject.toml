@@ -8,5 +8,16 @@ dependencies = [
     "einops>=0.8.1",
     "jaxtyping>=0.3.3",
     "numpy>=2.3.4",
+    "pybind11>=3.0.1",
     "torch>=2.9.0",
 ]
+
+[build-system]
+requires = ["maturin>=1.7,<2.0"]
+build-backend = "maturin"
+
+[tool.maturin]
+module-name = "tokenizer"
+bindings = "pyo3"
+python-source = "."
+manifest-path = "tokenizer/Cargo.toml"
