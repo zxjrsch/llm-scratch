@@ -1,5 +1,5 @@
-from tokenizer import sum_as_string
 from csrc.kernels import add
+from tokenizer import sum_as_string
 
 if __name__ == '__main__':
     # Rust 

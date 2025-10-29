@@ -1,6 +1,7 @@
 import cutlass
 import cutlass.cute as cute
 
+
 @cute.kernel
 def tensor_add_kernel(
     gA: cute.Tensor,  # Input tensor A
@@ -45,10 +46,10 @@ def tensor_add(
 
 if __name__ == '__main__':
 
-    import torch
     from functools import partial
     from typing import List
 
+    import torch
     from cutlass.cute.runtime import from_dlpack
 
 
