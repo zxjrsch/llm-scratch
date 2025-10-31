@@ -35,3 +35,13 @@ references make concepts more digestible.
 5. [Matmul on Hopper](https://cudaforfun.substack.com/p/outperforming-cublas-on-h100-a-worklog)
 
 6. [A nice writeup](https://siboehm.com/articles/22/CUDA-MMM)
+
+## DSL
+
+1. We have already mentioned Cutlass and Mojo, see [tile-lang](https://tilelang.com/tutorials/debug_tools_for_tilelang.html) and the corresponding [paper](https://arxiv.org/pdf/2504.17577)
+
+## Code Samples 
+
+1. [DeepGEMM](https://github.com/deepseek-ai/DeepGEMM)
+2. [MXFP8 kernel for MoE training](https://cursor.com/blog/kernels)
+3. [Expert communication kernels](https://research.perplexity.ai/articles/efficient-and-portable-mixture-of-experts-communication), also see Github for NVSHMEM kernel sample.
