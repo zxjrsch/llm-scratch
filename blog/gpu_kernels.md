@@ -45,3 +45,4 @@ references make concepts more digestible.
 1. [DeepGEMM](https://github.com/deepseek-ai/DeepGEMM)
 2. [MXFP8 kernel for MoE training](https://cursor.com/blog/kernels)
 3. [Expert communication kernels](https://research.perplexity.ai/articles/efficient-and-portable-mixture-of-experts-communication), also see Github for NVSHMEM kernel sample.
+4. [FlashInfer](https://docs.flashinfer.ai/api/gemm.html)
