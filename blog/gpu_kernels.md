@@ -36,6 +36,8 @@ references make concepts more digestible.
 
 6. [A nice writeup](https://siboehm.com/articles/22/CUDA-MMM)
 
+7. [Avoiding bubbles in triton code](https://www.nvidia.com/en-us/on-demand/session/gtc25-s72876/)
+
 ## DSL
 
 1. We have already mentioned Cutlass and Mojo, see [tile-lang](https://tilelang.com/tutorials/debug_tools_for_tilelang.html) and the corresponding [paper](https://arxiv.org/pdf/2504.17577)
