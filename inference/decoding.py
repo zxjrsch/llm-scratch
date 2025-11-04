@@ -10,9 +10,6 @@ def temperature_scaled_probabilities(llm_logits: Float[torch.Tensor, 'batch sequ
 def nucleus_sampling():
     pass
 
-class KVCache:
-    pass
-
 if __name__ == '__main__':
     size = (batch, sequence, vocab) = (4, 8, 16)
     llm_logits = torch.rand(size)
