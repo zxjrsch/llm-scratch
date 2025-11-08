@@ -1,9 +1,9 @@
 from csrc.kernels import add
-from tokenizer import sum_as_string
+from tokenizer import dummy
 
 if __name__ == '__main__':
     # Rust 
-    x = sum_as_string(1, 2)
+    x = dummy(1, 2)
     print(type(x))
 
     # C++
