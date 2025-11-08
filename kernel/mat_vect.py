@@ -1,4 +1,4 @@
-import triton 
+import triton
 import triton.langauge as tl
 
 
