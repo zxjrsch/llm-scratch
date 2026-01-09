@@ -1,103 +1,122 @@
-use compact_str::CompactString;
-use fancy_regex::Regex;
+use pyo3::prelude::*;
 use std::cmp::Ordering;
-use std::collections::BinaryHeap;
-use std::collections::HashMap;
-use std::fs;
+use std::collections::HashMap as StdHashMap;
 
-fn main() {
-    // IO
-    let file_path = "./dummy.txt";
-    let contents = fs::read_to_string(file_path).expect("File error");
+use dary_heap::OctonaryHeap;
+use fancy_regex::Regex;
+use pyo3::prelude::*;
 
-    // // word count
-    // let mut dict: HashMap<CompactString, u8> = HashMap::new();
+use ahash::{AHashMap, AHashSet};
+use compact_str::CompactString;
+use rayon::prelude::*;
 
-    // const PAT: &str = r"'(?i:[sdmt]|ll|ve|re)|[^\r\n\p{L}\p{N}]?+\p{L}+|\p{N}{1,3}| ?[^\s\p{L}\p{N}]++[\r\n]*|\s*[\r\n]|\s+(?!\S)|\s+";
-    // let _s = "I've done my homework!";
-    // let re = Regex::new(&PAT).unwrap();
-
-    // for word in re.find_iter(&contents) {
-    //     let w = CompactString::new(word.unwrap().as_str());
-    //     let w_count = dict.entry(w).or_insert(0);
-    //     *w_count += 1;
-
-    // }
-
-    // let mut unique_words: Vec<CompactString> = Vec::new();
-
-    // for (word, count) in dict {
-    //     // println!("|{word}| {count}");
-    //     unique_words.push(word.clone());
-    //     // println!(r"{word} {:?}", word.as_bytes());
-    //     println!("{:?}", word.as_bytes());
-    // }
-
-    // println!("Unique words {}", unique_words.len());
-
-    type BytePair = (u8, u8);
-
-    #[derive(Debug, Eq, PartialEq)]
-    struct PairCount {
-        pair: BytePair,
-        count: u32,
-    }
-
-    impl Ord for PairCount {
-        fn cmp(&self, other: &Self) -> Ordering {
-            // self.count.cmp(&other.count)
-            (self.count, self.pair).cmp(&(other.count, other.pair))
-        }
-    }
-
-    impl PartialOrd for PairCount {
-        fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-            Some(self.cmp(other))
-        }
-    }
-
-    let mut pair_count_dict: HashMap<BytePair, u32> = HashMap::new();
-    let mut byte_sequence: Vec<u8> = vec![
-        32, 115, 111, 112, 104, 105, 115, 116, 105, 99, 97, 116, 101, 100,
-    ];
-    byte_sequence = contents.as_bytes().to_vec();
-    // println!("Text Length {}", contents.len());
-    // byte_sequence = byte_sequence[..10].to_vec();
-
-    let mut i = 0;
-    while i < byte_sequence.len() - 1 {
-        // println!("{}, {}", byte_sequence[i], byte_sequence[i+1]);
-        let pair = (byte_sequence[i], byte_sequence[i + 1]);
-        let pair_count = pair_count_dict.entry(pair).or_insert(0);
-        *pair_count += 1;
-        i += 1;
-    }
-
-    let mut pair_count_heap: BinaryHeap<PairCount> = BinaryHeap::new();
-
-    for (pair, count) in pair_count_dict {
-        // println!("{:?}, {}", pair, count);
-        pair_count_heap.push(PairCount { pair, count })
-    }
-
-    let l = pair_count_heap.len() / 2;
-    for i in 0..l {
-        let pair_count = pair_count_heap.pop().unwrap();
-        // println!("{:?}, {}", pair_count.pair, pair_count.count);
-    }
-}
-
-
-/// Formats the sum of two numbers as string.
 #[pyfunction]
-fn dummy(a: usize, b: usize) -> PyResult<String> {
-    Ok((a + b +2).to_string())
-}
+fn py_iter_interface(
+    py: pyo3::Python<'_>,
+    iterator: &pyo3::Bound<'_, pyo3::PyAny>,
+) -> PyResult<()> {
+    // python iterator reference
+    let py_iter: pyo3::Py<pyo3::PyAny> = unsafe {
+        pyo3::Py::from_owned_ptr_or_err(py, pyo3::ffi::PyObject_GetIter(iterator.as_ptr()))?
+    };
 
-/// A Python module implemented in Rust.
-#[pymodule]
-fn tokenizer(m: &Bound<'_, PyModule>) -> PyResult<()> {
-    m.add_function(wrap_pyfunction!(dummy, m)?)?;
+    // container to store strings yielded by python iterator
+    let buf_size = 1024;
+    let mut buf: Vec<String> = Vec::with_capacity(buf_size);
+
+    let refill = |buf: &mut Vec<String>| -> PyResult<bool> {
+        pyo3::Python::attach(|py| {
+            buf.clear();
+
+            // rust interface to python iterator, while it holds the GIL token
+            let rs_iter = py_iter.bind(py);
+
+            loop {
+                if buf.len() >= buf_size {
+                    return Ok(false);
+                }
+
+                // calls next on the iterator
+                let next_str = unsafe {
+                    pyo3::Bound::from_owned_ptr_or_opt(py, pyo3::ffi::PyIter_Next(rs_iter.as_ptr()))
+                };
+
+                match next_str {
+                    Some(text) => {
+                        let t: String = text.extract()?;
+                        buf.push(t);
+                    }
+                    None => {
+                        if pyo3::PyErr::occurred(py) {
+                            return Err(pyo3::PyErr::fetch(py));
+                        } else {
+                            return Ok(true); // end of iter
+                        }
+                    }
+                }
+            }
+        })
+    };
+
+    let mut num_strings_processed: u64 = 0;
+
+    // prepare regex for pre-tokenization
+    let regex_pat = Regex::new(r"'(?i:[sdmt]|ll|ve|re)|[^\r\n\p{L}\p{N}]?+\p{L}+|\p{N}{1,3}| ?[^\s\p{L}\p{N}]++[\r\n]*|\s*[\r\n]|\s+(?!\S)|\s+").expect("Regex compilation failed, invalid pattern.");
+
+    let mut word_count_table: AHashMap<CompactString, i32> = AHashMap::new();
+    loop {
+        let end_of_iter = refill(&mut buf)?;
+
+        if buf.is_empty() && end_of_iter {
+            // note even if we reached the end of iterator
+            // we still need to process it before termainating
+            break;
+        }
+
+        num_strings_processed += buf.len() as u64;
+
+        let loop_local_counts: AHashMap<CompactString, i32> = py.detach(|| {
+            buf.par_iter()
+                .map(|str_seq| {
+                    let mut local_count_table: AHashMap<CompactString, i32> = AHashMap::new();
+                    for chunk in regex_pat.find_iter(str_seq) {
+                        let word = CompactString::from(chunk.expect("Regex Error").as_str());
+                        *local_count_table.entry(word).or_default() += 1;
+                    }
+                    local_count_table
+                })
+                .reduce(AHashMap::new, |mut hashmap_a, hashmap_b| {
+                    for (word, count) in hashmap_b {
+                        *hashmap_a.entry(word).or_default() += count;
+                    }
+                    hashmap_a
+                })
+        });
+
+        for (word, count) in loop_local_counts {
+            *word_count_table.entry(word).or_default() += count;
+        }
+
+        if end_of_iter {
+            break;
+        }
+    }
+
     Ok(())
 }
 
+/// LLM Tokenizer: Byte Pair Encoder in Rust
+#[pymodule]
+mod bpe_tokenizer {
+    use log::info;
+    use pyo3::prelude::*;
+
+    #[pymodule_export]
+    use super::py_iter_interface;
+
+    #[pymodule_init]
+    fn init(m: &Bound<'_, PyModule>) -> PyResult<()> {
+        pyo3_log::init();
+        Ok(())
+    }
+}
