@@ -4,14 +4,17 @@ use std::collections::HashMap as StdHashMap;
 
 use dary_heap::OctonaryHeap;
 use fancy_regex::Regex;
-use pyo3::prelude::*;
 
 use ahash::{AHashMap, AHashSet};
 use compact_str::CompactString;
 use rayon::prelude::*;
+use std::time::Instant;
+
+
+pub mod merger;
 
 #[pyfunction]
-fn py_iter_interface(
+fn train_bpe(
     py: pyo3::Python<'_>,
     iterator: &pyo3::Bound<'_, pyo3::PyAny>,
 ) -> PyResult<()> {
@@ -58,12 +61,14 @@ fn py_iter_interface(
         })
     };
 
+    log::info!("running pretokenization");
+    let mut start = Instant::now();
     let mut num_strings_processed: u64 = 0;
 
     // prepare regex for pre-tokenization
     let regex_pat = Regex::new(r"'(?i:[sdmt]|ll|ve|re)|[^\r\n\p{L}\p{N}]?+\p{L}+|\p{N}{1,3}| ?[^\s\p{L}\p{N}]++[\r\n]*|\s*[\r\n]|\s+(?!\S)|\s+").expect("Regex compilation failed, invalid pattern.");
 
-    let mut word_count_table: AHashMap<CompactString, i32> = AHashMap::new();
+    let mut pretoken_count_table: AHashMap<CompactString, i32> = AHashMap::new();
     loop {
         let end_of_iter = refill(&mut buf)?;
 
@@ -80,21 +85,21 @@ fn py_iter_interface(
                 .map(|str_seq| {
                     let mut local_count_table: AHashMap<CompactString, i32> = AHashMap::new();
                     for chunk in regex_pat.find_iter(str_seq) {
-                        let word = CompactString::from(chunk.expect("Regex Error").as_str());
-                        *local_count_table.entry(word).or_default() += 1;
+                        let pretoken = CompactString::from(chunk.expect("Regex Error").as_str());
+                        *local_count_table.entry(pretoken).or_default() += 1;
                     }
                     local_count_table
                 })
                 .reduce(AHashMap::new, |mut hashmap_a, hashmap_b| {
-                    for (word, count) in hashmap_b {
-                        *hashmap_a.entry(word).or_default() += count;
+                    for (pretoken, count) in hashmap_b {
+                        *hashmap_a.entry(pretoken).or_default() += count;
                     }
                     hashmap_a
                 })
         });
 
-        for (word, count) in loop_local_counts {
-            *word_count_table.entry(word).or_default() += count;
+        for (pretoken, count) in loop_local_counts {
+            *pretoken_count_table.entry(pretoken).or_default() += count;
         }
 
         if end_of_iter {
@@ -102,6 +107,13 @@ fn py_iter_interface(
         }
     }
 
+    log::info!("finished pretokenization in {:.3} seconds", start.elapsed().as_secs_f64());
+    // by now we have pretoken count in pretoken_count_table
+    let num_merges = 2000;
+
+    log::info!("initializing byte pair encoding training");
+    let mut account = merger::Account::new(pretoken_count_table);
+    account.merge(num_merges);
     Ok(())
 }
 
@@ -112,7 +124,7 @@ mod bpe_tokenizer {
     use pyo3::prelude::*;
 
     #[pymodule_export]
-    use super::py_iter_interface;
+    use super::train_bpe;
 
     #[pymodule_init]
     fn init(m: &Bound<'_, PyModule>) -> PyResult<()> {
